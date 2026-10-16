@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>取引先一覧（XPathクラッシュ再現）</title>
+  <script src="https://cdn.tailwindcss.com/3.4.16"></script>
+  <script>
+    // バクラクのデザイントークン相当（見た目用。クラッシュ再現にはclass数のみが影響する）
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            'action-primary': '#2563eb',
+            disabled: '#e5e7eb',
+          },
+          borderColor: { active: '#2563eb', primary: '#d1d5db' },
+          textColor: { disabled: '#9ca3af' },
+          spacing: { '2xs': '4px', xs: '8px', sm: '12px', md: '16px' },
+          fontSize: { md: '14px' },
+        },
+      },
+    };
+  </script>
+</head>
+<body class="bg-gray-50 text-gray-800">
+  <!-- 祖先要素のclassは実サイト（https://invoice.layerx.jp/clients）と同じ -->
+  <div class="grid h-dvh w-full grid-cols-[max-content,1fr] grid-rows-[max-content,1fr] print:h-auto">
+    <header class="col-span-2 border-b bg-white px-md py-xs font-bold">バクラク（再現用ダミー）</header>
+    <nav class="w-48 border-r bg-white p-md text-sm">取引先</nav>
+    <main class="h-full flex-1 overflow-hidden print:h-auto print:overflow-visible">
+      <div class="flex h-full flex-col">
+        <div class="min-h-0 flex-1">
+          <div class="flex h-full flex-col print:h-auto print:overflow-visible">
+            <div class="p-md flex-1 overflow-y-auto print:h-auto print:overflow-visible gap-md flex flex-col gap-sm">
+              <div class="flex items-center justify-between">
+                <h1 class="text-xl font-bold">取引先</h1>
+                <div class="flex items-center gap-xs justify-end">
+                  <!-- 実サイトと同じ42個のclass -->
+                  <button class="relative inline-flex cursor-pointer select-none items-center justify-center whitespace-nowrap rounded-[4px] text-center align-middle no-underline transition-all duration-150 focus:outline-none focus-visible:ring-[3px] focus-visible:ring-blue-300 focus-visible:ring-offset-transparent disabled:cursor-default aria-disabled:cursor-default py-2xs bg-action-primary border-active border text-white hover:border-blue-600 hover:bg-blue-600 active:bg-action-primary active:border-active disabled:text-disabled disabled:bg-disabled disabled:border-primary disabled:border aria-disabled:text-disabled aria-disabled:bg-disabled aria-disabled:border-primary aria-disabled:border h-[34px] px-sm text-md gap-x-1.5 leading-[21px] min-w-24" type="button">CSVインポート</button>
+                  <button class="relative inline-flex cursor-pointer select-none items-center justify-center whitespace-nowrap rounded-[4px] text-center align-middle no-underline transition-all duration-150 focus:outline-none focus-visible:ring-[3px] focus-visible:ring-blue-300 focus-visible:ring-offset-transparent disabled:cursor-default aria-disabled:cursor-default py-2xs bg-action-primary border-active border text-white hover:border-blue-600 hover:bg-blue-600 active:bg-action-primary active:border-active disabled:text-disabled disabled:bg-disabled disabled:border-primary disabled:border aria-disabled:text-disabled aria-disabled:bg-disabled aria-disabled:border-primary aria-disabled:border h-[34px] px-sm text-md gap-x-1.5 leading-[21px] min-w-24" type="button">作成</button>
+                </div>
+              </div>
+
+              <!-- クリック結果の表示（スクリーンショットで確認用） -->
+              <p id="result" class="rounded border border-dashed border-gray-300 bg-white p-sm text-sm">まだクリックされていません</p>
+
+              <table class="w-full bg-white text-sm">
+                <thead><tr class="border-b text-left"><th class="p-xs">取引先名</th><th class="p-xs">登録番号</th></tr></thead>
+                <tbody>
+                  <tr class="border-b"><td class="p-xs">株式会社サンプル</td><td class="p-xs">T1234567890123</td></tr>
+                  <tr class="border-b"><td class="p-xs">テスト商事株式会社</td><td class="p-xs">T9876543210987</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+  <script>
+    let count = 0;
+    document.querySelectorAll('button').forEach((b) => {
+      b.addEventListener('click', () => {
+        count += 1;
+        document.getElementById('result').textContent =
+          `「${b.textContent}」がクリックされました（${count}回目 / ${new Date().toLocaleTimeString('ja-JP')}）`;
+      });
+    });
+  </script>
+</body>
+</html>
