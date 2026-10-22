@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ページ2</title>
+  <script src="https://cdn.tailwindcss.com/3.4.16"></script>
+</head>
+<body class="bg-gray-50 text-gray-800">
+  <main class="mx-auto max-w-xl p-6 flex flex-col gap-4">
+    <h1 class="text-xl font-bold">ページ2</h1>
+    <p class="text-sm">ボタンをクリックするとページ3に移動します。</p>
+    <button id="next" type="button" class="rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700">次へ</button>
+  </main>
+  <script>
+    document.getElementById('next').addEventListener('click', () => {
+      location.href = 'page3.html';
+    });
+  </script>
+</body>
+</html>
