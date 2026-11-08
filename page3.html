@@ -1,16 +1,189 @@
 <!doctype html>
 <html lang="ja">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>ページ3</title>
-  <script src="https://cdn.tailwindcss.com/3.4.16"></script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FAX Dialog Test</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --fg: #1d2330; --muted: #6b7280; --card: #fff;
+    --line: #dde1e7; --accent: #2563eb; --warn: #b45309;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.5 system-ui, sans-serif; background: var(--bg); color: var(--fg); }
+  main { max-width: 760px; margin: 0 auto; padding: 24px 16px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  p.sub { color: var(--muted); margin: 0 0 20px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
+  label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
+  select, input { font: inherit; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; }
+  button { font: inherit; padding: 10px 20px; border: 0; border-radius: 6px; background: var(--accent); color: #fff; cursor: pointer; }
+  button.secondary { background: #e5e7eb; color: var(--fg); }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  #log { font: 12px/1.6 ui-monospace, monospace; background: #0f172a; color: #e2e8f0; border-radius: 6px; padding: 12px; min-height: 120px; max-height: 320px; overflow: auto; white-space: pre-wrap; margin: 0; }
+  #status { font-weight: 600; }
+  .presets a { color: var(--accent); margin-right: 12px; font-size: 13px; }
+  /* Loading overlay */
+  #overlay { position: fixed; inset: 0; background: rgba(15, 23, 42, .55); display: none; align-items: center; justify-content: center; z-index: 10; }
+  #overlay.show { display: flex; }
+  .loading-box { background: #fff; border-radius: 8px; padding: 24px 32px; display: flex; gap: 16px; align-items: center; }
+  .spinner { width: 28px; height: 28px; border: 3px solid #cbd5e1; border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  #elapsed { color: var(--muted); font-variant-numeric: tabular-nums; }
+</style>
 </head>
-<body class="bg-gray-50 text-gray-800">
-  <main class="mx-auto max-w-xl p-6 flex flex-col gap-4">
-    <h1 class="text-xl font-bold">ページ3</h1>
-    <p id="result" class="text-sm">ページ2から移動しました。</p>
-    <a href="page2.html" class="text-sm text-blue-600 underline">ページ2に戻る</a>
-  </main>
+<body>
+<main>
+  <h1>FAX送信ダイアログ再現テスト</h1>
+  <p class="sub">Click → confirm → loading N秒 → alert「FAXリクエストを送信しました」 を再現します。実際の送信は行いません。</p>
+
+  <div class="card">
+    <div class="grid">
+      <label>mode (loading中の挙動)
+        <select id="mode">
+          <option value="async">async: overlay + setTimeout（renderer は応答可）</option>
+          <option value="sync">sync: overlay + main thread をブロック（sync XHR 相当）</option>
+          <option value="none">none: loading なし、即 alert</option>
+        </select>
+      </label>
+      <label>delay (秒)
+        <input id="delay" type="number" min="0" step="1" value="15">
+      </label>
+      <label>confirm を出す
+        <select id="confirm"><option value="1">yes</option><option value="0">no</option></select>
+      </label>
+      <label>最後に alert を出す
+        <select id="alert"><option value="1">yes</option><option value="0">no</option></select>
+      </label>
+    </div>
+    <p class="presets" style="margin:12px 0 0">
+      プリセット:
+      <a href="?mode=none&delay=0">レポート2相当 (即alert)</a>
+      <a href="?mode=async&delay=2">async 2s</a>
+      <a href="?mode=async&delay=15">async 15s</a>
+      <a href="?mode=sync&delay=15">sync 15s</a>
+      <a href="?mode=sync&delay=120">sync 120s</a>
+      <a href="?mode=async&delay=15&alert=0">async 15s・alertなし</a>
+    </p>
+  </div>
+
+  <div class="card row">
+    <button id="send" type="button">FAX送信（全件）</button>
+    <button id="apply" type="button" class="secondary">設定をURLに反映</button>
+    <span>状態: <span id="status">待機中</span></span>
+  </div>
+
+  <div class="card">
+    <pre id="log"></pre>
+  </div>
+
+  <!-- 完了マーカー（FindElement 確認用） -->
+  <div id="rc-fax-done" hidden></div>
+</main>
+
+<div id="overlay" role="dialog" aria-live="polite">
+  <div class="loading-box">
+    <div class="spinner"></div>
+    <div>送信中です… <span id="elapsed">0.0s</span></div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const q = new URLSearchParams(location.search);
+  const cfg = {
+    mode: q.get('mode') || 'async',
+    delay: Number(q.get('delay') ?? 15),
+    confirm: (q.get('confirm') ?? '1') === '1',
+    alert: (q.get('alert') ?? '1') === '1',
+  };
+  $('mode').value = cfg.mode;
+  $('delay').value = cfg.delay;
+  $('confirm').value = cfg.confirm ? '1' : '0';
+  $('alert').value = cfg.alert ? '1' : '0';
+
+  const t0 = performance.now();
+  const log = (msg) => {
+    const ts = new Date().toISOString().slice(11, 23);
+    const rel = ((performance.now() - t0) / 1000).toFixed(2).padStart(7);
+    $('log').textContent += `${ts}  +${rel}s  ${msg}\n`;
+    $('log').scrollTop = $('log').scrollHeight;
+    console.log('[fax-test]', msg);
+  };
+  const setStatus = (s) => { $('status').textContent = s; document.title = `FAX Dialog Test - ${s}`; };
+
+  log(`loaded: mode=${cfg.mode} delay=${cfg.delay}s confirm=${cfg.confirm} alert=${cfg.alert}`);
+
+  $('apply').addEventListener('click', () => {
+    const p = new URLSearchParams({
+      mode: $('mode').value, delay: $('delay').value,
+      confirm: $('confirm').value, alert: $('alert').value,
+    });
+    location.search = p.toString();
+  });
+
+  let timer = null;
+  const showOverlay = () => {
+    const start = performance.now();
+    $('overlay').classList.add('show');
+    timer = setInterval(() => {
+      $('elapsed').textContent = ((performance.now() - start) / 1000).toFixed(1) + 's';
+    }, 100);
+  };
+  const hideOverlay = () => {
+    clearInterval(timer);
+    $('overlay').classList.remove('show');
+  };
+
+  const finish = () => {
+    hideOverlay();
+    $('rc-fax-done').hidden = false;
+    $('rc-fax-done').dataset.at = new Date().toISOString();
+    setStatus('完了');
+    log('loading end');
+    if (cfg.alert) {
+      log('alert open: FAXリクエストを送信しました');
+      alert('FAXリクエストを送信しました');
+      log('alert closed');
+    }
+  };
+
+  $('send').addEventListener('click', () => {
+    log('click send');
+    if (cfg.confirm) {
+      log('confirm open');
+      const ok = confirm('選択した文書をFAX送信します。よろしいですか？');
+      log(`confirm closed: ${ok}`);
+      if (!ok) { setStatus('キャンセル'); return; }
+    }
+    $('rc-fax-done').hidden = true;
+    setStatus('送信中');
+
+    if (cfg.mode === 'none') {
+      finish();
+      return;
+    }
+
+    showOverlay();
+    log(`loading start (${cfg.mode}, ${cfg.delay}s)`);
+
+    if (cfg.mode === 'async') {
+      setTimeout(finish, cfg.delay * 1000);
+      return;
+    }
+
+    // sync: overlay を一度描画させてから main thread をブロック（sync XHR 相当）
+    requestAnimationFrame(() => setTimeout(() => {
+      log('main thread blocked');
+      const end = Date.now() + cfg.delay * 1000;
+      while (Date.now() < end) { /* busy wait */ }
+      log('main thread released');
+      finish();
+    }, 0));
+  });
+})();
+</script>
 </body>
 </html>
